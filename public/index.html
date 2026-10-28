@@ -1,0 +1,642 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Đề Tài 05: Real-Time Leaderboard với Redis NoSQL</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Background Glow Elements -->
+    <div class="glow-bg glow-1"></div>
+    <div class="glow-bg glow-2"></div>
+
+    <header class="navbar">
+        <div class="nav-brand">
+            <div class="logo-icon">⚡</div>
+            <div>
+                <h1>REAL-TIME LEADERBOARD</h1>
+                <p class="subtitle">Môn học NoSQL • Đề tài 05 • Kiến trúc Redis Sorted Set (ZSET)</p>
+            </div>
+        </div>
+
+        <div class="system-status">
+            <!-- Nút Đăng Nhập / Thông Tin Tài Khoản Đã Đăng Nhập -->
+            <div id="authContainer" class="auth-container">
+                <button id="btnOpenAuthModal" class="btn btn-auth">
+                    <span>🔑</span> Đăng Nhập / Đăng Ký
+                </button>
+                <div id="userLoggedInWidget" class="user-logged-in-widget" style="display: none;">
+                    <span class="user-avatar-badge" id="navUserAvatar">🚀</span>
+                    <div class="user-meta-header">
+                        <strong id="navUserName">Quốc Bảo</strong>
+                        <span class="user-rank-header" id="navUserRank">Hạng: #--</span>
+                    </div>
+                    <button id="btnLogout" class="btn-logout" title="Đăng Xuất Khỏi Session Redis">🚪 Thoát</button>
+                </div>
+            </div>
+
+            <div class="status-badge" id="statusBadge">
+                <span class="status-dot"></span>
+                <span id="statusText">Redis Connected (Port 6379)</span>
+            </div>
+            <div class="stats-pills">
+                <div class="stat-pill">
+                    <span class="stat-label">RAM Redis:</span>
+                    <strong id="statRam">--</strong>
+                </div>
+                <div class="stat-pill">
+                    <span class="stat-label">Tổng Players:</span>
+                    <strong id="statPlayers">0</strong>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- THANH CÔNG CỤ TÍNH NĂNG NÂNG CAO CHO BUỔI BÁO CÁO -->
+    <nav class="feature-toolbar">
+        <button id="btnOpenQrModal" class="feat-btn feat-mobile">
+            <span>📱</span> Quét QR Đua Top Điện Thoại
+        </button>
+        <button id="btnOpenGuildModal" class="feat-btn feat-guild">
+            <span>🤝</span> BXH Bang Hội (ZUNIONSTORE)
+        </button>
+        <button id="btnOpenTieBreakModal" class="feat-btn feat-tiebreak">
+            <span>⚖️</span> Xử Lý Bằng Điểm (Tie-Break)
+        </button>
+        <button id="btnOpenSkipListModal" class="feat-btn feat-skiplist">
+            <span>⚡</span> Trực Quan Thuật Toán Skip List
+        </button>
+        <button id="btnOpenPersistenceModal" class="feat-btn feat-persist">
+            <span>💾</span> Thử Thách Mất Điện (Persistence)
+        </button>
+        <button id="btnOpenExplorer" class="feat-btn feat-explorer">
+            <span>🗄️</span> Trình Quản Trị CSDL Redis
+        </button>
+    </nav>
+
+    <main class="main-container">
+        <!-- CỘT TRÁI: BẢNG XẾP HẠNG THỜI GIAN THỰC -->
+        <section class="leaderboard-section">
+            <div class="card-header">
+                <div class="header-left">
+                    <span class="badge-live">LIVE</span>
+                    <h2>Bảng Xếp Hạng Trực Tiếp</h2>
+                </div>
+                <div class="tab-switch">
+                    <button class="tab-btn active" data-period="global" id="tabGlobal">Toàn Thời Gian (All-Time)</button>
+                    <button class="tab-btn" data-period="daily" id="tabDaily">Hôm Nay (Daily)</button>
+                </div>
+            </div>
+
+            <!-- PODIUM TOP 3 (BỤC VINH QUANG) -->
+            <div class="podium-container" id="podiumContainer">
+                <!-- Sẽ được render động từ JS: Top 2, Top 1, Top 3 -->
+            </div>
+
+            <!-- BẢNG DANH SÁCH TOP 10 -->
+            <div class="table-container">
+                <table class="leaderboard-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 80px;">Hạng</th>
+                            <th>Người Chơi</th>
+                            <th style="width: 130px;">Danh Hiệu</th>
+                            <th style="text-align: right; width: 140px;">Điểm Số</th>
+                        </tr>
+                    </thead>
+                    <tbody id="leaderboardBody">
+                        <tr>
+                            <td colspan="4" class="empty-state">Đang tải dữ liệu từ Redis...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </section>
+
+        <!-- CỘT PHẢI: BẢNG ĐIỀU KHIỂN & DEMO TRỰC QUAN -->
+        <aside class="control-section">
+            <!-- 1. BỘ CÔNG CỤ THUYẾT TRÌNH & DEMO TẢI -->
+            <div class="card control-card">
+                <h3>🎮 Trung Tâm Thao Tác & Demo</h3>
+                <div class="button-grid">
+                    <button id="btnSeed" class="btn btn-primary">
+                        <span>🌱</span> Nạp 15 Game Thủ Mẫu
+                    </button>
+                    <button id="btnMassPopulate" class="btn btn-scale">
+                        <span>🚀</span> Bơm 1.000 Game Thủ Vào BXH Thật
+                    </button>
+                    <button id="btnSimulate" class="btn btn-warning">
+                        <span id="botIcon">🤖</span> <span id="botBtnText">Bật Bot Tự Động Nộp Điểm</span>
+                    </button>
+                    <button id="btnReset" class="btn btn-danger">
+                        <span>🗑️</span> Xóa Trắng Bảng (Reset)
+                    </button>
+                </div>
+            </div>
+
+            <!-- 1.5. ĐẤU TRƯỜNG HIỆU NĂNG: SỨC MẠNH CỦA REDIS -->
+            <div class="card benchmark-card">
+                <div class="card-header" style="margin-bottom: 0.8rem;">
+                    <h3>🔥 Khảo Nghiệm Sức Mạnh Tối Thượng (Stress Test)</h3>
+                    <span class="badge-bench">BENCHMARK</span>
+                </div>
+                <p style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.9rem;">
+                    Chứng minh thuật toán <strong>Skip List O(log N)</strong> và bộ nhớ RAM của Redis trước hàng chục ngàn người chơi:
+                </p>
+
+                <div class="bench-controls">
+                    <label style="font-size: 0.8rem; color: var(--text-muted); font-weight: 600;">Quy mô thử nghiệm:</label>
+                    <div class="bench-scale-select">
+                        <button type="button" class="btn-scale-opt" data-scale="10000">10.000 Người</button>
+                        <button type="button" class="btn-scale-opt active" data-scale="20000">20.000 Người</button>
+                        <button type="button" class="btn-scale-opt" data-scale="50000">50.000 Người</button>
+                        <button type="button" class="btn-scale-opt" data-scale="100000">100.000 Người</button>
+                    </div>
+                    <button id="btnRunBenchmark" class="btn btn-benchmark">
+                        <span>⚡</span> BẮT ĐẦU TEST SỨC MẠNH REDIS
+                    </button>
+                </div>
+
+                <!-- BẢNG KẾT QUẢ SO SÁNH TRỰC DIỆN -->
+                <div id="benchmarkResultBox" class="bench-results" style="display: none;">
+                    <!-- JS sẽ render kết quả tại đây -->
+                </div>
+            </div>
+
+            <!-- 2. FORM NỘP ĐIỂM / CỘNG ĐIỂM THỜI GIAN THỰC -->
+            <div class="card form-card">
+                <h3>⚡ Nộp Điểm Nhanh (ZINCRBY)</h3>
+
+                <!-- Banner thông báo khi người dùng đã đăng nhập tài khoản -->
+                <div id="loggedInUserActionBox" class="logged-in-action-box" style="display: none;">
+                    <div class="user-active-badge">
+                        <span id="activeUserAvatar">🚀</span>
+                        <div>
+                            <strong id="activeUserName">Quốc Bảo</strong>
+                            <span class="active-rank-pill" id="activeUserRankPill">Hạng #--</span>
+                        </div>
+                    </div>
+                    <p class="active-desc">💡 Đang đăng nhập! Điểm cộng sẽ được tự động tích lũy vào tài khoản của bạn qua Redis Session Token.</p>
+                </div>
+
+                <form id="scoreForm">
+                    <div class="form-row" id="selectPlayerRow">
+                        <div class="form-group">
+                            <label>Chọn Người Chơi:</label>
+                            <select id="selectPlayer">
+                                <option value="110">Vũ Quốc Bảo (Bạn - ID: 110)</option>
+                                <option value="101">Nguyễn Văn An (ID: 101)</option>
+                                <option value="102">Trần Minh Đức (ID: 102)</option>
+                                <option value="custom">+ Thêm người chơi mới</option>
+                            </select>
+                        </div>
+                        <div class="form-group" id="customPlayerGroup" style="display: none;">
+                            <label>Tên người mới:</label>
+                            <input type="text" id="customPlayerName" placeholder="Nhập tên của bạn...">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Số Điểm Muốn Cộng:</label>
+                        <div class="quick-points">
+                            <button type="button" class="btn-point" data-pts="100">+100</button>
+                            <button type="button" class="btn-point" data-pts="300">+300</button>
+                            <button type="button" class="btn-point" data-pts="500">+500</button>
+                            <button type="button" class="btn-point highlight" data-pts="1000">+1,000</button>
+                        </div>
+                        <div class="input-with-action">
+                            <input type="number" id="inputPoints" value="300" min="1" step="50" required>
+                            <button type="submit" class="btn btn-success">Cộng Điểm Ngay</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+
+            <!-- 3. TRA CỨU HẠNG & XUNG QUANH TÔI (AROUND ME) -->
+            <div class="card search-card">
+                <h3>🔍 Tra Cứu Hạng & Người Lân Cận (Neighbors)</h3>
+                <div class="search-box">
+                    <input type="text" id="searchUserId" placeholder="Nhập User ID (vd: 110) hoặc Thứ Hạng (vd: #1, #5)...">
+                    <button id="btnSearchRank" class="btn btn-secondary">Tra Cứu</button>
+                </div>
+                <div id="searchResult" class="search-result-box" style="display: none;">
+                    <!-- JS sẽ render kết quả tra cứu tại đây -->
+                </div>
+            </div>
+
+            <!-- 4. TERMINAL HIỂN THỊ CÁC LỆNH REDIS THỰC THI (PROVE NOSQL) -->
+            <div class="card terminal-card">
+                <div class="terminal-header">
+                    <div class="terminal-dots">
+                        <span class="dot red"></span>
+                        <span class="dot yellow"></span>
+                        <span class="dot green"></span>
+                    </div>
+                    <span class="terminal-title">Redis Command Monitor (Real-Time Terminal)</span>
+                </div>
+                <div class="terminal-body" id="redisTerminal">
+                    <div class="cmd-line text-muted">// Các lệnh Redis ZSET/HASH được server gọi sẽ hiển thị ở đây</div>
+                </div>
+            </div>
+        </aside>
+    </main>
+
+    <!-- REDIS DATABASE EXPLORER MODAL -->
+    <div id="explorerModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span class="icon">🗄️</span>
+                    <div>
+                        <h3>Redis Database Viewer & Explorer</h3>
+                        <p>Xem trực tiếp các Key, Type và Dữ liệu thô đang lưu trong RAM của Redis (Port 6379)</p>
+                    </div>
+                </div>
+                <button id="btnCloseExplorer" class="btn-close">&times;</button>
+            </div>
+
+            <div class="modal-body">
+                <!-- CỘT DANH SÁCH KEYS -->
+                <div class="explorer-sidebar">
+                    <div class="sidebar-search">
+                        <input type="text" id="filterKeysInput" placeholder="Lọc key (vd: leaderboard, user)...">
+                        <button id="btnRefreshKeys" class="btn-icon" title="Tải lại danh sách key">🔄</button>
+                    </div>
+                    <div class="keys-list" id="explorerKeysList">
+                        <!-- Render các key ở đây -->
+                    </div>
+                </div>
+
+                <!-- CỘT CHI TIẾT DỮ LIỆU CỦA KEY ĐƯỢC CHỌN -->
+                <div class="explorer-content">
+                    <div class="key-header" id="keyHeader" style="display: none;">
+                        <div>
+                            <span class="key-badge" id="keyTypeBadge">ZSET</span>
+                            <strong class="key-name-title" id="keyNameTitle">leaderboard:global</strong>
+                        </div>
+                        <div class="key-meta" id="keyMeta">TTL: Vĩnh viễn (-1)</div>
+                    </div>
+
+                    <div class="key-viewer-body" id="keyViewerBody">
+                        <div class="empty-explorer">
+                            👈 Hãy chọn một Key ở cột bên trái để xem dữ liệu thô bên trong CSDL Redis
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 1. QR CODE MOBILE GAME MODAL -->
+    <div id="qrModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content modal-compact">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span class="icon">📱</span>
+                    <div>
+                        <h3>Mời Quét Mã QR Cùng Đua Top Bằng Điện Thoại</h3>
+                        <p>Dùng camera điện thoại (cùng mạng Wi-Fi) để truy cập mini-game clicker thời gian thực</p>
+                    </div>
+                </div>
+                <button id="btnCloseQr" class="btn-close">&times;</button>
+            </div>
+            <div class="modal-body modal-body-single" style="text-align: center; padding: 2rem;">
+                <div class="qr-wrapper">
+                    <img id="qrImage" src="https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=http://192.168.1.11:3000/game.html" alt="QR Code" class="qr-code-img">
+                </div>
+                <p style="margin-top: 1rem; font-size: 0.95rem; font-weight: 700; color: #38bdf8;">
+                    http://192.168.1.11:3000/game.html
+                </p>
+                <div style="margin-top: 1rem; display: flex; justify-content: center; gap: 0.8rem;">
+                    <a href="/game.html" target="_blank" class="btn btn-primary">
+                        <span>🚀</span> Mở Thử Trong Tab Mới
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. BANG HỘI (GUILDS) VỚI ZUNIONSTORE MODAL -->
+    <div id="guildModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span class="icon">🤝</span>
+                    <div>
+                        <h3>Bảng Xếp Hạng Bang Hội (Guild Leaderboard)</h3>
+                        <p>Ứng dụng câu lệnh NoSQL nguyên khối <strong>ZUNIONSTORE</strong> để tính tổng điểm các thành viên trong 1ms</p>
+                    </div>
+                </div>
+                <button id="btnCloseGuild" class="btn-close">&times;</button>
+            </div>
+            <div class="modal-body modal-body-single" style="padding: 1.5rem;" id="guildContent">
+                <div style="text-align: center; color: var(--text-muted);">Đang tải dữ liệu Bang Hội từ Redis...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. TIE-BREAKING DEMO MODAL -->
+    <div id="tieBreakModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content modal-compact">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span class="icon">⚖️</span>
+                    <div>
+                        <h3>Giải Quyết Vấn Đề Bằng Điểm (Tie-Breaking Algorithm)</h3>
+                        <p>Ứng dụng kỹ thuật Fractional Timestamp Score trong Redis</p>
+                    </div>
+                </div>
+                <button id="btnCloseTieBreak" class="btn-close">&times;</button>
+            </div>
+            <div class="modal-body modal-body-single" style="padding: 1.5rem;">
+                <div class="formula-box">
+                    <div style="font-weight: 700; color: #fbbf24; margin-bottom: 0.4rem;">📐 Công Thức Tính Điểm Thập Phân:</div>
+                    <code>Final Score = Điểm Gốc + (1 - (Timestamp / 10^14))</code>
+                    <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 0.5rem;">
+                        👉 Người đạt điểm trước có Timestamp nhỏ hơn &rarr; Phần thập phân lớn hơn &rarr; Xếp hạng trên!
+                    </p>
+                </div>
+                <div style="margin: 1.2rem 0; text-align: center;">
+                    <button id="btnRunTieBreakDemo" class="btn btn-warning" style="width: 100%;">
+                        <span>⚡</span> Tạo Thử Nghiệm 2 Người Cùng 5,000 Điểm
+                    </button>
+                </div>
+                <div id="tieBreakResultBox" style="display: none;"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 4. SKIP LIST VISUALIZER MODAL -->
+    <div id="skipListModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span class="icon">⚡</span>
+                    <div>
+                        <h3>Trực Quan Hóa Thuật Toán Skip List (Danh Sách Nhảy)</h3>
+                        <p>Bản chất cấu trúc giải thuật giúp Redis đạt tốc độ <strong>O(log N)</strong> thay vì O(N) của SQL</p>
+                    </div>
+                </div>
+                <button id="btnCloseSkipList" class="btn-close">&times;</button>
+            </div>
+            <div class="modal-body modal-body-single" style="padding: 1.5rem;">
+                <div class="skiplist-diagram">
+                    <div class="skiplist-level level-4">
+                        <span class="lvl-label">Level 4 (Express Lane):</span>
+                        <div class="nodes-row">
+                            <span class="node active">HEAD</span>
+                            <span class="lane-line">───────────────</span>
+                            <span class="node active">50,000</span>
+                            <span class="lane-line">───────────────</span>
+                            <span class="node">100,000</span>
+                            <span class="lane-line">───────────────</span>
+                            <span class="node">NIL</span>
+                        </div>
+                    </div>
+                    <div class="skiplist-level level-3">
+                        <span class="lvl-label">Level 3:</span>
+                        <div class="nodes-row">
+                            <span class="node active">HEAD</span>
+                            <span class="lane-line">───────</span>
+                            <span class="node">25,000</span>
+                            <span class="lane-line">───────</span>
+                            <span class="node active">50,000</span>
+                            <span class="lane-line">───────</span>
+                            <span class="node">75,000</span>
+                            <span class="lane-line">───────</span>
+                            <span class="node">100,000</span>
+                        </div>
+                    </div>
+                    <div class="skiplist-level level-2">
+                        <span class="lvl-label">Level 2:</span>
+                        <div class="nodes-row">
+                            <span class="node active">HEAD</span>
+                            <span class="lane-line">───</span>
+                            <span class="node">12,500</span>
+                            <span class="lane-line">───</span>
+                            <span class="node">25,000</span>
+                            <span class="lane-line">───</span>
+                            <span class="node active">50,000</span>
+                            <span class="lane-line">───</span>
+                            <span class="node">62,500</span>
+                            <span class="lane-line">───</span>
+                            <span class="node">75,000</span>
+                        </div>
+                    </div>
+                    <div class="skiplist-level level-1">
+                        <span class="lvl-label">Level 1 (All 100k items):</span>
+                        <div class="nodes-row">
+                            <span class="node active">HEAD</span>
+                            <span class="lane-line">─</span>
+                            <span class="node">...</span>
+                            <span class="lane-line">─</span>
+                            <span class="node">5,338</span>
+                            <span class="lane-line">─</span>
+                            <span class="node target-node">5,339 (ĐÍCH ĐẾN)</span>
+                            <span class="lane-line">─</span>
+                            <span class="node">5,340</span>
+                            <span class="lane-line">─</span>
+                            <span class="node">...</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="comparison-summary" style="margin-top: 1.5rem;">
+                    <div style="font-weight: 700; color: #34d399; margin-bottom: 0.5rem;">📊 So Sánh Hiệu Năng Giải Thuật Giữa Redis & SQL:</div>
+                    <table class="db-table">
+                        <thead>
+                            <tr>
+                                <th>Tiêu Chí So Sánh</th>
+                                <th>SQL Truyền Thống (Table Scan / B-Tree)</th>
+                                <th>Redis NoSQL (Skip List + Hash Table)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>Độ Phức Tạp Tra Cứu Rank</td>
+                                <td style="color: #f87171;">O(N) - Quét toàn bộ dòng</td>
+                                <td style="color: #34d399; font-weight: 700;">O(log N) - Nhảy tầng</td>
+                            </tr>
+                            <tr>
+                                <td>Số bước tìm vị trí #5,339</td>
+                                <td style="color: #f87171;">5,339 bước tuần tự</td>
+                                <td style="color: #34d399; font-weight: 700;">~14 bước nhảy</td>
+                            </tr>
+                            <tr>
+                                <td>Tốc Độ Thực Thi</td>
+                                <td style="color: #f87171;">150 - 500 ms (Nghẽn đĩa)</td>
+                                <td style="color: #34d399; font-weight: 700;">0.15 ms (Sub-millisecond)</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 5. PERSISTENCE MODAL -->
+    <div id="persistenceModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content modal-compact">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <span class="icon">💾</span>
+                    <div>
+                        <h3>Cơ Chế Lưu Trữ Bền Vững (Redis Persistence)</h3>
+                        <p>Cách Redis bảo toàn 100.000 bản ghi khi server mất điện hoặc khởi động lại</p>
+                    </div>
+                </div>
+                <button id="btnClosePersistence" class="btn-close">&times;</button>
+            </div>
+            <div class="modal-body modal-body-single" style="padding: 1.5rem;">
+                <div class="metric-grid-2">
+                    <div class="metric-tile">
+                        <div class="tile-label">Lần Lưu RDB Gần Nhất:</div>
+                        <div class="tile-val" id="dispLastSaveTime">--</div>
+                    </div>
+                    <div class="metric-tile">
+                        <div class="tile-label">Dữ Liệu Thay Đổi Chờ Ghi:</div>
+                        <div class="tile-val" id="dispChangesCount">0</div>
+                    </div>
+                </div>
+
+                <div style="margin: 1.2rem 0; text-align: center;">
+                    <button id="btnTriggerBgSave" class="btn btn-success" style="width: 100%;">
+                        <span>📸</span> THỰC HIỆN BGSAVE (LƯU SNAPSHOT XUỐNG Ổ ĐĨA NGAY)
+                    </button>
+                </div>
+
+                <div class="persistence-guide">
+                    <div style="font-weight: 700; color: #fbbf24; margin-bottom: 0.4rem;">🎯 Hướng dẫn thực hiện bài test "Mất điện" trước giảng viên:</div>
+                    <ol style="font-size: 0.82rem; color: #cbd5e1; line-height: 1.6; padding-left: 1.2rem;">
+                        <li>Bấm nút <strong>BGSAVE</strong> ở trên để Redis chốt file <code>dump.rdb</code>.</li>
+                        <li>Mở PowerShell gõ: <code>redis-cli shutdown</code> để tắt Redis đột ngột (Web sẽ mất kết nối).</li>
+                        <li>Gõ: <code>redis-server --daemonize yes</code> để bật lại. F5 trang web: <strong>Dữ liệu còn nguyên 100%!</strong></li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- AUTH MODAL: ĐĂNG KÝ & ĐĂNG NHẬP (REDIS SESSION STORE) -->
+    <div id="authModal" class="modal-overlay" style="display: none;">
+        <div class="modal-content modal-compact auth-modal-premium">
+            <div class="modal-header">
+                <div class="modal-title">
+                    <div class="modal-icon-glow">🔐</div>
+                    <div>
+                        <h3 id="authModalTitle">Xác Thực Tài Khoản (Redis Session Store)</h3>
+                        <p>Quản lý phiên bằng <strong>Session Token (TTL 24h)</strong> & Lưu trữ trong <strong>Redis Hash</strong></p>
+                    </div>
+                </div>
+                <button id="btnCloseAuth" class="btn-close">&times;</button>
+            </div>
+
+            <div class="modal-body modal-body-single" style="padding: 1.5rem;">
+                <!-- Tab chuyển Đăng Nhập / Đăng Ký -->
+                <div class="auth-tab-switch">
+                    <button class="auth-tab-btn active" id="tabAuthLogin">
+                        <span>🔑</span> Đăng Nhập
+                    </button>
+                    <button class="auth-tab-btn" id="tabAuthRegister">
+                        <span>✨</span> Đăng Ký Mới
+                    </button>
+                </div>
+
+                <!-- Form Đăng Nhập -->
+                <form id="formLogin">
+                    <div class="form-group">
+                        <label>Tên Đăng Nhập (Username):</label>
+                        <div class="input-box-wrapper">
+                            <span class="input-icon">👤</span>
+                            <input type="text" id="loginUsername" placeholder="vd: quocbao, sontung, faker..." required autocomplete="username">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Mật Khẩu:</label>
+                        <div class="input-box-wrapper">
+                            <span class="input-icon">🔒</span>
+                            <input type="password" id="loginPassword" placeholder="Nhập mật khẩu..." required autocomplete="current-password">
+                            <button type="button" class="btn-toggle-pwd" id="toggleLoginPwd" title="Hiện/Ẩn mật khẩu">👁️</button>
+                        </div>
+                    </div>
+
+                    <div class="demo-accounts-hint">
+                        <div style="font-weight: 700; margin-bottom: 0.3rem;">⚡ Bấm để điền nhanh tài khoản Demo:</div>
+                        <div class="demo-acc-chips">
+                            <button type="button" class="btn-chip-acc" data-u="quocbao" data-p="123">🚀 quocbao / 123</button>
+                            <button type="button" class="btn-chip-acc" data-u="sontung" data-p="123">👑 sontung / 123</button>
+                            <button type="button" class="btn-chip-acc" data-u="faker" data-p="123">🔥 faker / 123</button>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-auth-submit btn-primary">
+                        <span>🚀</span> ĐĂNG NHẬP VÀ ĐUA TOP NGAY
+                    </button>
+                </form>
+
+                <!-- Form Đăng Ký -->
+                <form id="formRegister" style="display: none;">
+                    <div class="form-group">
+                        <label>Tên Đăng Nhập (Username - viết liền):</label>
+                        <div class="input-box-wrapper">
+                            <span class="input-icon">👤</span>
+                            <input type="text" id="regUsername" placeholder="vd: pro_gamer, quocbao_2026..." required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Mật Khẩu:</label>
+                        <div class="input-box-wrapper">
+                            <span class="input-icon">🔒</span>
+                            <input type="password" id="regPassword" placeholder="Tạo mật khẩu an toàn..." required>
+                            <button type="button" class="btn-toggle-pwd" id="toggleRegPwd" title="Hiện/Ẩn mật khẩu">👁️</button>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Họ Tên Hiển Thị Trong Game:</label>
+                        <div class="input-box-wrapper">
+                            <span class="input-icon">🏷️</span>
+                            <input type="text" id="regName" placeholder="vd: Nguyễn Văn A..." required>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Chọn Biểu Tượng Avatar Của Bạn:</label>
+                        <div class="avatar-picker-grid" id="avatarPickerGrid">
+                            <button type="button" class="avatar-chip active" data-avatar="🚀">🚀</button>
+                            <button type="button" class="avatar-chip" data-avatar="👑">👑</button>
+                            <button type="button" class="avatar-chip" data-avatar="🔥">🔥</button>
+                            <button type="button" class="avatar-chip" data-avatar="⚡">⚡</button>
+                            <button type="button" class="avatar-chip" data-avatar="🦁">🦁</button>
+                            <button type="button" class="avatar-chip" data-avatar="🐉">🐉</button>
+                            <button type="button" class="avatar-chip" data-avatar="🦊">🦊</button>
+                            <button type="button" class="avatar-chip" data-avatar="💎">💎</button>
+                        </div>
+                        <input type="hidden" id="regAvatar" value="🚀">
+                    </div>
+
+                    <div class="tech-badge-note">
+                        ⚡ <strong>Kiến trúc NoSQL:</strong> Dữ liệu lưu vào <code>user:account:{username}</code>, cấp phát User ID bằng <code>INCR counters:user_id</code>.
+                    </div>
+
+                    <button type="submit" class="btn btn-auth-submit btn-success">
+                        <span>✨</span> TẠO TÀI KHOẢN VÀ BẮT ĐẦU ĐUA TOP
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Notification Toast -->
+    <div id="toast" class="toast"></div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

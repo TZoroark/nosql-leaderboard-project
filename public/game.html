@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Đua Top Clicker - Mobile Redis Game</title>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;700;800&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; touch-action: manipulation; }
+        body {
+            background: #0a0d14;
+            color: #fff;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: space-between;
+            padding: 1.5rem 1rem;
+            user-select: none;
+            -webkit-user-select: none;
+            overflow: hidden;
+        }
+
+        .header { text-align: center; }
+        .header h1 { font-size: 1.4rem; font-weight: 800; background: linear-gradient(90deg, #f59e0b, #ef4444); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .header p { font-size: 0.8rem; color: #9ca3af; margin-top: 2px; }
+
+        .player-info-card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 16px;
+            padding: 1rem 1.5rem;
+            width: 100%;
+            max-width: 360px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .stat-box { text-align: center; }
+        .stat-label { font-size: 0.72rem; color: #9ca3af; text-transform: uppercase; font-weight: 700; }
+        .stat-val { font-size: 1.6rem; font-weight: 800; font-family: 'JetBrains Mono', monospace; }
+        .rank-val { color: #f59e0b; }
+        .score-val { color: #34d399; }
+
+        .tap-area {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        .tap-btn {
+            width: 220px;
+            height: 220px;
+            border-radius: 50%;
+            border: 4px solid rgba(245, 158, 11, 0.5);
+            background: radial-gradient(circle, #f59e0b 0%, #b45309 70%, #78350f 100%);
+            box-shadow: 0 0 50px rgba(245, 158, 11, 0.4), inset 0 0 20px rgba(255, 255, 255, 0.3);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: transform 0.05s ease;
+            position: relative;
+            outline: none;
+        }
+
+        .tap-btn:active {
+            transform: scale(0.92);
+            box-shadow: 0 0 80px rgba(245, 158, 11, 0.7);
+        }
+
+        .tap-icon { font-size: 4.5rem; }
+        .tap-text { font-size: 1.1rem; font-weight: 800; color: #fff; margin-top: 0.3rem; letter-spacing: 1px; text-shadow: 0 2px 4px rgba(0,0,0,0.6); }
+
+        .floating-pts {
+            position: absolute;
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: #34d399;
+            pointer-events: none;
+            animation: floatUp 0.8s forwards ease-out;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translateY(0) scale(1); }
+            100% { opacity: 0; transform: translateY(-90px) scale(1.4); }
+        }
+
+        .footer {
+            font-size: 0.75rem;
+            color: #6b7280;
+            text-align: center;
+        }
+
+        /* Modal setup player */
+        .setup-modal {
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: #0a0d14;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+            z-index: 100;
+        }
+
+        .setup-card {
+            background: #131926;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 20px;
+            padding: 2rem;
+            width: 100%;
+            max-width: 340px;
+            text-align: center;
+        }
+
+        .setup-card h2 { font-size: 1.3rem; margin-bottom: 0.5rem; }
+        .setup-card p { font-size: 0.82rem; color: #9ca3af; margin-bottom: 1.5rem; }
+        .setup-card input {
+            width: 100%;
+            padding: 0.85rem;
+            border-radius: 12px;
+            background: rgba(0, 0, 0, 0.4);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #fff;
+            color-scheme: dark;
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            outline: none;
+            text-align: center;
+        }
+        .setup-card button {
+            width: 100%;
+            padding: 0.9rem;
+            border-radius: 12px;
+            background: linear-gradient(135deg, #f59e0b, #ef4444);
+            border: none;
+            color: #fff;
+            font-weight: 800;
+            font-size: 1rem;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <!-- Modal nhập tên khi vừa vào -->
+    <div id="setupModal" class="setup-modal">
+        <div class="setup-card">
+            <div style="font-size: 2.8rem; margin-bottom: 0.3rem;">⚡</div>
+            <h2>Gia Nhập Đua Top</h2>
+            <p>Đăng nhập tài khoản hoặc chơi nhanh để tranh tài trực tiếp lên Redis!</p>
+
+            <!-- Tab Đăng Nhập / Chơi Nhanh -->
+            <div style="display: grid; grid-template-columns: 1fr 1fr; background: rgba(0,0,0,0.5); border-radius: 10px; padding: 3px; margin-bottom: 1rem; border: 1px solid rgba(255,255,255,0.1);">
+                <button id="btnTabLogin" style="background: linear-gradient(135deg, #f59e0b, #ef4444); color: #fff; border: none; padding: 0.5rem; border-radius: 8px; font-weight: 700; font-size: 0.8rem; cursor: pointer;">Đăng Nhập</button>
+                <button id="btnTabGuest" style="background: transparent; color: #9ca3af; border: none; padding: 0.5rem; border-radius: 8px; font-weight: 700; font-size: 0.8rem; cursor: pointer;">Chơi Nhanh</button>
+            </div>
+
+            <!-- Form Đăng Nhập trên Điện Thoại -->
+            <form id="mobileLoginForm">
+                <input type="text" id="mobileUsername" placeholder="Tên đăng nhập (vd: quocbao)..." required autocomplete="username">
+                <input type="password" id="mobilePassword" placeholder="Mật khẩu..." required autocomplete="current-password">
+                <button type="submit" id="btnMobileLogin" style="margin-top: 0.3rem;">ĐĂNG NHẬP ĐUA TOP 🚀</button>
+            </form>
+
+            <!-- Form Chơi Nhanh -->
+            <form id="mobileGuestForm" style="display: none;">
+                <input type="text" id="playerNameInput" placeholder="Tên hoặc biệt danh..." maxlength="20">
+                <button type="submit" id="btnJoinGame">BẮT ĐẦU CHƠI NHANH ⚡</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="header">
+        <h1>REDIS LIVE TAPPER</h1>
+        <p>Bấm liên tục để leo Top thời gian thực!</p>
+    </div>
+
+    <div class="player-info-card">
+        <div class="stat-box">
+            <div class="stat-label">Hạng Hiện Tại</div>
+            <div class="stat-val rank-val" id="dispRank">#--</div>
+        </div>
+        <div style="text-align: center;">
+            <div style="font-size: 2rem;" id="dispAvatar">⚡</div>
+            <div style="font-size: 0.75rem; font-weight: 700; color: #f3f4f6;" id="dispName">Bạn</div>
+            <div style="font-size: 0.68rem; color: #38bdf8; font-family: 'JetBrains Mono', monospace;" id="dispUid">ID: ...</div>
+        </div>
+        <div class="stat-box">
+            <div class="stat-label">Điểm Số</div>
+            <div class="stat-val score-val" id="dispScore">0</div>
+        </div>
+    </div>
+
+    <div class="tap-area">
+        <button class="tap-btn" id="tapBtn">
+            <div class="tap-icon">🔥</div>
+            <div class="tap-text">TAP! TAP!</div>
+        </button>
+    </div>
+
+    <div class="footer">
+        Đang đồng bộ tới Redis NoSQL Database (Port 6379)<br>
+        Mỗi cú chạm gửi lệnh <strong>ZINCRBY</strong> tới Server<br>
+        <a href="#" id="btnSwitchAccount" style="color: #f59e0b; font-size: 0.72rem; text-decoration: underline; margin-top: 4px; display: inline-block;">Đổi Tài Khoản / Đăng Nhập Khác</a>
+    </div>
+
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        let myUserId = localStorage.getItem('redis_mobile_uid') || ('mobile_' + Math.floor(Math.random() * 8999 + 1000));
+        let myName = localStorage.getItem('redis_mobile_name') || '';
+        let myToken = localStorage.getItem('redis_mobile_token') || null;
+        const avatars = ['⚡', '🔥', '🦁', '🚀', '👑', '💎', '🎯'];
+        let myAvatar = localStorage.getItem('redis_mobile_avatar') || avatars[Math.floor(Math.random() * avatars.length)];
+
+        let myScore = 0;
+        let myRank = '--';
+
+        const setupModal = document.getElementById('setupModal');
+        const btnTabLogin = document.getElementById('btnTabLogin');
+        const btnTabGuest = document.getElementById('btnTabGuest');
+        const mobileLoginForm = document.getElementById('mobileLoginForm');
+        const mobileGuestForm = document.getElementById('mobileGuestForm');
+        const mobileUsername = document.getElementById('mobileUsername');
+        const mobilePassword = document.getElementById('mobilePassword');
+        const playerNameInput = document.getElementById('playerNameInput');
+        const btnSwitchAccount = document.getElementById('btnSwitchAccount');
+
+        const dispRank = document.getElementById('dispRank');
+        const dispScore = document.getElementById('dispScore');
+        const dispAvatar = document.getElementById('dispAvatar');
+        const dispName = document.getElementById('dispName');
+        const dispUid = document.getElementById('dispUid');
+        const tapBtn = document.getElementById('tapBtn');
+
+        // Chuyển tab trong modal
+        btnTabLogin.addEventListener('click', () => {
+            btnTabLogin.style.background = 'linear-gradient(135deg, #f59e0b, #ef4444)';
+            btnTabLogin.style.color = '#fff';
+            btnTabGuest.style.background = 'transparent';
+            btnTabGuest.style.color = '#9ca3af';
+            mobileLoginForm.style.display = 'block';
+            mobileGuestForm.style.display = 'none';
+        });
+
+        btnTabGuest.addEventListener('click', () => {
+            btnTabGuest.style.background = 'linear-gradient(135deg, #f59e0b, #ef4444)';
+            btnTabGuest.style.color = '#fff';
+            btnTabLogin.style.background = 'transparent';
+            btnTabLogin.style.color = '#9ca3af';
+            mobileLoginForm.style.display = 'none';
+            mobileGuestForm.style.display = 'block';
+        });
+
+        function updatePlayerHeader() {
+            if (dispName) dispName.textContent = myName || 'Chiến Binh';
+            if (dispUid) dispUid.textContent = myUserId;
+            if (dispAvatar) dispAvatar.textContent = myAvatar;
+        }
+
+        // Tự động khôi phục nếu đã có thông tin
+        if (myName) {
+            setupModal.style.display = 'none';
+            updatePlayerHeader();
+            // Nếu có token, lấy thông tin cập nhật mới nhất từ Redis
+            if (myToken) {
+                fetch('/api/auth/me', { headers: { 'Authorization': `Bearer ${myToken}` } })
+                    .then(res => res.json())
+                    .then(d => {
+                        if (d.success && d.user) {
+                            myScore = d.user.score;
+                            myRank = d.user.rank;
+                            dispScore.textContent = myScore.toLocaleString();
+                            dispRank.textContent = '#' + myRank;
+                        }
+                    }).catch(() => {});
+            }
+        }
+
+        // Đăng nhập tài khoản trên điện thoại
+        mobileLoginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const username = mobileUsername.value.trim();
+            const password = mobilePassword.value.trim();
+
+            try {
+                const res = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const d = await res.json();
+                if (d.success) {
+                    myToken = d.token;
+                    myUserId = d.user.userId;
+                    myName = d.user.name;
+                    myAvatar = d.user.avatar || '⚡';
+                    myScore = d.user.score || 0;
+                    myRank = d.user.rank || '--';
+
+                    localStorage.setItem('redis_mobile_token', myToken);
+                    localStorage.setItem('redis_mobile_uid', myUserId);
+                    localStorage.setItem('redis_mobile_name', myName);
+                    localStorage.setItem('redis_mobile_avatar', myAvatar);
+
+                    dispScore.textContent = myScore.toLocaleString();
+                    dispRank.textContent = '#' + myRank;
+                    updatePlayerHeader();
+                    setupModal.style.display = 'none';
+                } else {
+                    alert(d.message || 'Đăng nhập thất bại!');
+                }
+            } catch {
+                alert('Không thể kết nối máy chủ!');
+            }
+        });
+
+        // Chơi nhanh (Guest)
+        mobileGuestForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const val = playerNameInput.value.trim() || 'Game Thủ ' + Math.floor(Math.random() * 900 + 100);
+            myName = val;
+            myToken = null;
+            localStorage.removeItem('redis_mobile_token');
+            localStorage.setItem('redis_mobile_name', myName);
+            localStorage.setItem('redis_mobile_uid', myUserId);
+            setupModal.style.display = 'none';
+            updatePlayerHeader();
+            socket.emit('game:tap', { userId: myUserId, name: myName, avatar: myAvatar, points: 10 });
+        });
+
+        // Nút đổi tài khoản
+        btnSwitchAccount.addEventListener('click', (e) => {
+            e.preventDefault();
+            setupModal.style.display = 'flex';
+        });
+
+        // Xử lý chạm Tap
+        tapBtn.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            socket.emit('game:tap', { userId: myUserId, token: myToken, name: myName, avatar: myAvatar, points: 25 });
+
+            const floatText = document.createElement('div');
+            floatText.className = 'floating-pts';
+            floatText.textContent = '+25';
+            floatText.style.left = (e.clientX || (window.innerWidth / 2)) - 20 + 'px';
+            floatText.style.top = (e.clientY || (window.innerHeight / 2)) - 40 + 'px';
+            document.body.appendChild(floatText);
+            setTimeout(() => floatText.remove(), 800);
+
+            if (navigator.vibrate) navigator.vibrate(20);
+        });
+
+        // Lắng nghe cập nhật thứ hạng riêng của mình từ server
+        socket.on('game:my_rank', (data) => {
+            if (data.userId === myUserId) {
+                dispScore.textContent = data.score.toLocaleString();
+                dispRank.textContent = '#' + data.rank;
+            }
+        });
+    </script>
+</body>
+</html>
